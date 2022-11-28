@@ -517,6 +517,6 @@ let-env config = {
 }
 
 use log.nu
-use wallet.nu
+#use wallet.nu
 
 use nu_scripts/virtual_environments/conda.nu

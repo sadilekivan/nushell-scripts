@@ -1,0 +1,11 @@
+#!/usr/bin/env nu
+
+def main [
+    #target: string
+    path: string
+] {
+    let executable = (basename $path)
+    let remote_path = $"/tmp/($executable)"
+    rsync -avz $path $"($env.TARGET):($remote_path)"
+    ssh $env.TARGET $remote_path
+}
