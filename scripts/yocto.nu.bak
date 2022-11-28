@@ -1,0 +1,91 @@
+# Yocto utilities
+#   Build and deploy commands around kas
+
+def yml [] { ls *.yml | get name }
+
+export def fdisk-list [] {
+    let disks = (sudo fdisk -l --bytes | split row "\n\n\n" | split column "\n\n" | drop column | rename info part)
+
+    for $disk in $disks {
+        let data = ($disk.info | split row "\n" | split column ":")
+        let data_size = ($data.0.column2 | parse -r '(\d+)(?= bytes)|(\d+)(?= sectors)')
+        #$disk.part
+        {
+            path: ($data.0.column1 | split row " " | get 1),
+            model: ($data.1.column2),
+            size: ($data_size | get Capture1.0 | into filesize),
+            sectors: ($data_size | get Capture2.1 | into int),
+            sector_size: ($data.2.column2 | parse -r '(\d+)(?= bytes)' | get Capture1.0 | into filesize),
+            type: ($data.5.column2),
+            identifier: ($data.6.column2)
+        }
+    }
+}
+
+export def yocto [
+    kas_config: string@yml              # .yml config file for kas
+    --build (-b): bool                  # Build with a kas
+    --shell (-s): bool                  # Bitbake shell
+    --deploy (-d): bool                 # Deploy with bmaptool
+    --max-size-filter: filesize = 32GiB # Device size filter for deploy choice
+] {
+    if ($kas_config | path exists) {
+        if ($build) {
+            log_info "Building image"
+            if not (which kas | get 0 | get path | path exists) {
+                log_error "kas bin not found, please install it"
+            }
+            let config_file = "yocto.toml"
+            if ($config_file | path exists) {
+                let config = (open $config_file)
+                let build_dev = $"/dev/disk/by-partuuid/($config.mounts.build_partuuid)"
+                if not (mountpoint build | complete | get exit_code | $in == 0) {
+                    log_info "Mounting build partition..."
+                    sudo mount $build_dev build -o rw,user,exec
+                }
+            }
+            kas build $kas_config
+        }
+
+        if ($shell) {
+            sh -c "source sources/poky/oe-init-build-env; nu"
+        }
+
+        if ($deploy) {
+            log_info "Deploying image"
+            let config = (open $kas_config)
+            let includes = ($config.header.includes | each { |it| open $it })
+            let config = ($config | update header.includes $includes)
+
+            let machine = $config.header.includes.0.machine
+            #let machine = $config.machine
+			let target = $config.header.includes.0.target.0
+            #let target = $config.target.0
+
+            let image_file = $"build/tmp/deploy/images/($machine)/($target)-($machine).wic.bz2"
+            if ($image_file | path exists) {
+                log_info "Performing storage device scan"
+                let storage_devices = (fdisk-list | where size < $max_size_filter)
+
+                if not ($storage_devices | is-empty) {
+                    echo $storage_devices
+                    let id = (input "Please choose a storage device [#]: " | into int)
+                    let device = ($storage_devices | get $id)
+
+                    log_info $"Deploying ($machine) to ($device.path) \(($device.size)\)"
+                    sleep 1sec
+                    sudo bmaptool copy $image_file $device.path
+                    log_info "Expanding root partition"
+                    sudo parted -s -a opt ($device.path) "resizepart 2 100%"
+                } else {
+                    log_error "No suitable storage devices found!"
+                }
+            } else {
+                log_error "Image not found!"
+            }
+        }
+    } else {
+        log_error "Chosen kas config file does not exist"
+    }
+}
+
