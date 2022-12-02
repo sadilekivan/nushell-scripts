@@ -7,5 +7,5 @@ def main [
     let executable = (basename $path)
     let remote_path = $"/tmp/($executable)"
     rsync -avz $path $"($env.TARGET):($remote_path)"
-    ssh $env.TARGET $remote_path
+    ssh -t $env.TARGET $remote_path
 }
