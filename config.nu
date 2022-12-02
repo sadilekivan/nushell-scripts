@@ -516,6 +516,7 @@ let-env config = {
   ]
 }
 
+use unix-wrap.nu *
 use log.nu
 #use wallet.nu
 
