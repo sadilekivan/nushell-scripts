@@ -5,5 +5,5 @@ export def lsblk [
 ] {
     let args = "-abp"
     let args = (if $scsi {$args + "S"} else {$args})
-    (nu -c $"/usr/bin/lsblk ($args) --json" | from json | get blockdevices | update size {|| $in.size | into filesize})
+    (nu -c $"/usr/bin/lsblk ($args) --json" | from json | get blockdevices | update size {|| $in | into filesize})
 }
